@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipForge</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">▶</span> ClipForge</div>
+    <nav id="nav">
+      <button data-tab="story" class="active"><span>📖</span> Story video</button>
+      <button data-tab="chat"><span>💬</span> Text story</button>
+      <button data-tab="split"><span>🎮</span> Split screen</button>
+      <button data-tab="blur"><span>🌫️</span> Blur reframe</button>
+      <button data-tab="clip"><span>✂️</span> AI clipper</button>
+      <button data-tab="library"><span>🗂️</span> Library</button>
+    </nav>
+    <div class="sidebar-foot" id="ai-status"></div>
+  </aside>
+
+  <main class="main">
+    <!-- STORY -->
+    <section class="tab active" id="tab-story">
+      <header><h1>Story video</h1><p>Narrated story with a title card and animated captions over gameplay.</p></header>
+      <div class="card ai-card">
+        <label>Generate with AI</label>
+        <div class="row">
+          <input id="story-idea" placeholder="e.g. My neighbor kept stealing my packages, so I set a trap…">
+          <select id="story-seconds"><option value="45">45s</option><option value="60" selected>60s</option><option value="90">90s</option><option value="150">2.5 min</option></select>
+          <button class="ghost" id="story-ai">✨ Write</button>
+        </div>
+      </div>
+      <form class="card" id="form-story">
+        <label>Title <input name="title" required maxlength="300" placeholder="AITA for telling my sister the truth at her wedding?"></label>
+        <label>Story <textarea name="body" required rows="9" placeholder="Paste or write your story…"></textarea></label>
+        <div class="grid">
+          <label>Voice <select name="voice" data-voices></select></label>
+          <label>Speed <input name="speed" type="number" step="0.05" min="0.5" max="2" value="1.0"></label>
+          <label>Caption style <select name="caption_style" data-styles></select></label>
+          <label>Caption height <input name="caption_y" type="range" min="0.2" max="0.85" step="0.01" value="0.5"></label>
+          <label>Community name <input name="community" value="r/stories"></label>
+          <label>Username <input name="author" value="storytime"></label>
+          <label>Split into parts <select name="part_seconds"><option value="">No, one video</option><option value="60">~60s parts</option><option value="90">~90s parts</option><option value="150">~2.5 min parts</option></select></label>
+          <label class="check"><input type="checkbox" name="dark_card"> Dark title card</label>
+        </div>
+        <div class="picker-label">Background</div>
+        <div class="bg-picker" data-bg-picker="story"></div>
+        <div class="grid">
+          <label>Music <select name="music" data-music></select></label>
+          <label>Music volume <input name="music_volume" type="range" min="0" max="0.5" step="0.01" value="0.12"></label>
+        </div>
+        <button class="primary" type="submit">Generate video</button>
+      </form>
+    </section>
+
+    <!-- CHAT -->
+    <section class="tab" id="tab-chat">
+      <header><h1>Text story</h1><p>A fake text conversation that pops in message by message, read by two voices.</p></header>
+      <div class="card ai-card">
+        <label>Generate with AI</label>
+        <div class="row">
+          <input id="chat-idea" placeholder="e.g. Texting my dad that I crashed his car, but it's a prank">
+          <button class="ghost" id="chat-ai">✨ Write</button>
+        </div>
+      </div>
+      <form class="card" id="form-chat">
+        <div class="grid">
+          <label>Contact name <input name="contact_name" value="Mom" maxlength="40"></label>
+          <label>Theme <select name="theme" data-themes></select></label>
+          <label>Your voice <select name="voice_me" data-voices></select></label>
+          <label>Their voice <select name="voice_them" data-voices></select></label>
+          <label>Speed <input name="speed" type="number" step="0.05" min="0.5" max="2" value="1.1"></label>
+          <label>Spoken hook (optional) <input name="hook" placeholder="My mom found out about the goat…"></label>
+        </div>
+        <div class="picker-label">Messages</div>
+        <div id="chat-messages" class="messages"></div>
+        <div class="row">
+          <button type="button" class="ghost" data-add="them">+ Their message</button>
+          <button type="button" class="ghost" data-add="me">+ My message</button>
+        </div>
+        <div class="picker-label">Background</div>
+        <div class="bg-picker" data-bg-picker="chat"></div>
+        <div class="grid">
+          <label>Music <select name="music" data-music></select></label>
+          <label>Music volume <input name="music_volume" type="range" min="0" max="0.5" step="0.01" value="0.12"></label>
+        </div>
+        <button class="primary" type="submit">Generate video</button>
+      </form>
+    </section>
+
+    <!-- SPLIT -->
+    <section class="tab" id="tab-split">
+      <header><h1>Split screen</h1><p>Your clip on top, satisfying gameplay below, with auto captions.</p></header>
+      <form class="card" id="form-split" data-layout="split">
+        <div data-source></div>
+        <div class="grid">
+          <label>Start (sec) <input name="start" type="number" min="0" step="0.1" placeholder="0"></label>
+          <label>End (sec) <input name="end" type="number" min="0" step="0.1" placeholder="end of video"></label>
+          <label>Max length (sec) <input name="max_seconds" type="number" min="5" value="180"></label>
+          <label>Caption style <select name="caption_style" data-styles></select></label>
+          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
+        </div>
+        <div class="picker-label">Gameplay</div>
+        <div class="bg-picker" data-bg-picker="split"></div>
+        <button class="primary" type="submit">Generate video</button>
+      </form>
+    </section>
+
+    <!-- BLUR -->
+    <section class="tab" id="tab-blur">
+      <header><h1>Blur reframe</h1><p>Turn a horizontal video vertical with a blurred fill and captions.</p></header>
+      <form class="card" id="form-blur" data-layout="blur">
+        <div data-source></div>
+        <div class="grid">
+          <label>Start (sec) <input name="start" type="number" min="0" step="0.1" placeholder="0"></label>
+          <label>End (sec) <input name="end" type="number" min="0" step="0.1" placeholder="end of video"></label>
+          <label>Max length (sec) <input name="max_seconds" type="number" min="5" value="180"></label>
+          <label>Caption style <select name="caption_style" data-styles></select></label>
+          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
+        </div>
+        <button class="primary" type="submit">Generate video</button>
+      </form>
+    </section>
+
+    <!-- CLIP -->
+    <section class="tab" id="tab-clip">
+      <header><h1>AI clipper</h1><p>Drop a podcast, stream or long video. Get the best moments as captioned shorts.</p></header>
+      <form class="card" id="form-clip">
+        <div data-source></div>
+        <div class="grid">
+          <label>Number of clips <input name="count" type="number" min="1" max="10" value="3"></label>
+          <label>Min length (sec) <input name="min_seconds" type="number" min="5" max="170" value="20"></label>
+          <label>Max length (sec) <input name="max_seconds" type="number" min="10" max="180" value="60"></label>
+          <label>Layout <select name="layout" data-layouts></select></label>
+          <label>Caption style <select name="caption_style" data-styles></select></label>
+          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
+          <label class="check"><input type="checkbox" name="use_ai" checked> Use Claude to pick moments</label>
+        </div>
+        <div class="picker-label">Gameplay (split layout only)</div>
+        <div class="bg-picker" data-bg-picker="clip"></div>
+        <button class="primary" type="submit">Find clips</button>
+      </form>
+    </section>
+
+    <!-- LIBRARY -->
+    <section class="tab" id="tab-library">
+      <header><h1>Library</h1><p>Background gameplay and music used by your videos. Only add footage you have the rights to use.</p></header>
+      <div class="card">
+        <label>Add background video</label>
+        <div class="row">
+          <input type="file" id="bg-file" accept="video/*">
+          <button class="ghost" id="bg-upload">Upload</button>
+        </div>
+        <div class="row">
+          <input id="bg-url" placeholder="…or paste a video URL to download">
+          <button class="ghost" id="bg-download">Download</button>
+        </div>
+        <div class="bg-picker" id="library-bgs"></div>
+      </div>
+      <div class="card">
+        <label>Add music</label>
+        <div class="row">
+          <input type="file" id="music-file" accept="audio/*">
+          <button class="ghost" id="music-upload">Upload</button>
+        </div>
+        <ul id="library-music" class="plain"></ul>
+      </div>
+    </section>
+  </main>
+
+  <aside class="jobs">
+    <h2>My videos</h2>
+    <div id="jobs"></div>
+  </aside>
+</div>
+
+<div class="modal" id="player" hidden>
+  <div class="modal-inner">
+    <button class="close" id="player-close">✕</button>
+    <video id="player-video" controls playsinline></video>
+    <div class="modal-meta" id="player-meta"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<template id="source-tpl">
+  <div class="source">
+    <div class="seg">
+      <button type="button" class="active" data-mode="upload">Upload</button>
+      <button type="button" data-mode="url">Video URL</button>
+    </div>
+    <div data-pane="upload"><input type="file" accept="video/*" data-file> <span class="hint" data-upload-status></span></div>
+    <div data-pane="url" hidden><input data-url placeholder="https://… (only content you have rights to)"></div>
+  </div>
+</template>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

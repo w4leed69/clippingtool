@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pillow>=10.1
+edge-tts>=7.0
+yt-dlp>=2024.1.1
+anthropic>=2.3
+httpx>=0.27
+# Speech-to-text with word timestamps (used by the AI clipper and auto-captions).
+faster-whisper>=1.0
