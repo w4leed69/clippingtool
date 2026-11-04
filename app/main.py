@@ -1,6 +1,7 @@
 """HTTP API + static web UI."""
 from __future__ import annotations
 
+import shutil
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -23,6 +24,14 @@ jobs: JobManager | None = None
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global jobs
+    missing = [tool for tool in ("ffmpeg", "ffprobe") if not shutil.which(tool)]
+    if missing:
+        raise SystemExit(
+            f"\n\n  {' and '.join(missing)} not found. ClipForge needs ffmpeg to make videos.\n"
+            "  Install it, then start the app again:\n"
+            "    Mac:     brew install ffmpeg\n"
+            "    Windows: winget install Gyan.FFmpeg   (then open a new terminal)\n"
+            "    Linux:   sudo apt install ffmpeg\n")
     await run_in_threadpool(media.ensure_placeholders)
     jobs = JobManager()
     yield
