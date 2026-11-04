@@ -48,15 +48,17 @@ def test_chat_job(client):
     assert (info["width"], info["height"]) == (1080, 1920)
 
 
-@pytest.mark.parametrize("layout", ["blur", "split", "crop"])
-def test_edit_layouts(client, source_video, layout):
-    r = client.post("/api/jobs/edit", json={"upload_id": source_video.name, "layout": layout,
-                                            "captions": False, "start": 2, "end": 8})
+@pytest.mark.parametrize("mode,aspect,size", [("blur", "9:16", (1080, 1920)), ("split", "9:16", (1080, 1920)),
+                                              ("center", "1:1", (1080, 1080)), ("none", "9:16", (640, 360))])
+def test_studio_reframe_modes(client, source_video, mode, aspect, size):
+    r = client.post("/api/jobs/studio", json={"upload_id": source_video.name, "clip": False, "start": 2, "end": 8,
+                                              "reframe": mode, "aspect": aspect, "captions": False,
+                                              "enhance": False})
     assert r.status_code == 202, r.text
     job = wait_job(client, r.json()["id"])
     assert job["status"] == "done", job["error"]
     info = video_info(job["outputs"][0]["url"])
-    assert (info["width"], info["height"]) == (1080, 1920)
+    assert (info["width"], info["height"]) == size
     assert 5.5 < info["duration"] < 6.6
 
 
@@ -75,24 +77,45 @@ def _fake_transcribe(media, language=None):
     return [s for s in segs if s.end < 39.5]
 
 
-def test_clip_job_with_captions(client, source_video, monkeypatch):
+def test_studio_all_features(client, source_video, monkeypatch):
+    import math
+    from app import config
+    from app.ai import reframe
+    import subprocess
     monkeypatch.setattr(transcribe, "transcribe", _fake_transcribe)
-    r = client.post("/api/jobs/clip", json={"upload_id": source_video.name, "count": 2, "min_seconds": 6,
-                                            "max_seconds": 12, "layout": "blur"})
+    monkeypatch.setattr(reframe.FaceDetector, "detect", lambda self, f: [reframe.Face(0.7, 0.4, 0.2)])
+    broll_clip = config.BROLL_DIR / "secret-vault.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=360x640:r=30",
+                    "-t", "4", "-pix_fmt", "yuv420p", str(broll_clip)], check=True)
+    r = client.post("/api/jobs/studio", json={
+        "upload_id": source_video.name, "clip": True, "clip_count": 2, "clip_min": 8, "clip_max": 14,
+        "reframe": "ai", "captions": True, "broll": True, "enhance": True,
+        "voiceover": True, "vo_mode": "duck", "vo_voice": "silent",
+        "vo_script": "Watch this closely because the secret is coming up right now."})
     assert r.status_code == 202, r.text
-    job = wait_job(client, r.json()["id"])
+    job = wait_job(client, r.json()["id"], timeout=400)
     assert job["status"] == "done", job["error"]
     assert 1 <= len(job["outputs"]) <= 2
     for o in job["outputs"]:
         assert o["picker"] == "heuristic"
+        assert {"AI reframe", "Audio enhance", "AI voice-over", "AI captions"} <= set(o["features"])
+        assert o["srt"] and client.get(o["srt"]).status_code == 200
         info = video_info(o["url"])
         assert (info["width"], info["height"]) == (1080, 1920)
-        assert 5 < info["duration"] <= 12.6
+        assert 7 < info["duration"] <= 14.6
+    broll_clip.unlink()
+
+
+def test_studio_voiceover_needs_script_without_ai(client, source_video):
+    job = wait_job(client, client.post("/api/jobs/studio", json={
+        "upload_id": source_video.name, "clip": False, "end": 4, "captions": False, "reframe": "blur",
+        "voiceover": True}).json()["id"])
+    assert job["status"] == "error" and "script" in job["error"]
 
 
 def test_validation_errors(client):
-    assert client.post("/api/jobs/clip", json={"url": "x", "min_seconds": 60, "max_seconds": 30}).status_code == 422
-    assert client.post("/api/jobs/edit", json={"layout": "blur"}).status_code == 422
+    assert client.post("/api/jobs/studio", json={"url": "x", "clip_min": 60, "clip_max": 30}).status_code == 422
+    assert client.post("/api/jobs/studio", json={"reframe": "blur"}).status_code == 422
     r = client.post("/api/jobs/story", json={"title": "t", "body": "b", "background": "../../etc/passwd"})
     assert r.status_code == 400
     assert client.post("/api/ai/script", json={"kind": "story", "idea": "a cat"}).status_code == 400

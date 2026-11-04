@@ -1,17 +1,19 @@
 # ClipForge
 
-A self-hosted generator for short vertical videos (TikTok, Reels, Shorts). You can make narrated story videos, fake text-message stories, split-screen gameplay edits, and AI-picked clips from long videos. Everything renders locally with ffmpeg.
+A self-hosted AI video editor for short-form content (TikTok, Reels, Shorts). Upload one video, turn on the AI tools you want, and get ready-to-post clips. Everything renders on your own machine with ffmpeg.
 
-| Tool | What it makes |
+## AI Studio
+
+| Feature | What it does |
 | --- | --- |
-| **Story video** | Title card, voiceover and animated word-by-word captions over background gameplay. Can split long stories into Part 1, 2, 3… |
-| **Text story** | A chat conversation that appears one bubble at a time, with each side read by its own voice |
-| **Split screen** | Your clip on top, gameplay underneath, auto captions |
-| **Blur reframe** | A horizontal video made vertical with a blurred fill and auto captions |
-| **AI clipper** | Turns a long video or podcast into several captioned shorts. Claude picks the best moments (a built-in scorer is used if no API key is set) |
-| **AI writer** | Writes a story or chat script from a one-line idea (Claude) |
+| **AI clipping** | Transcribes a long video and picks the moments most likely to go viral, each with a title and a score. Uses Claude, or a built-in scorer without an API key |
+| **AI captions** | Word-by-word animated captions with key words highlighted, plus an `.srt` file you can download |
+| **AI reframe** | Tracks the speaker's face and moves a virtual camera smoothly to keep them in frame (9:16, 1:1 or 16:9). Also offers blurred fill, center crop, split screen with gameplay, or the original framing |
+| **AI B-roll** | Cuts to matching footage when something visual is mentioned. Footage comes from Pexels (free, needs `PEXELS_API_KEY`) or from your own clips in `data/broll/`, matched by file name (`city-night.mp4` plays on "city") |
+| **AI audio enhance** | Removes noise and hum, tames harsh "s" sounds, evens out the voice and normalizes to the -14 LUFS loudness short-video platforms use |
+| **AI voice-over** | Claude looks at frames from your clip, writes narration that fits its length, and a voice reads it. The original audio either drops in volume under the voice or is replaced. You can also write the script yourself |
 
-All output is 1080×1920, 30 fps, H.264/AAC MP4.
+You can turn each feature on or off separately. The **Story video** and **Text story** templates are still there for faceless content.
 
 ## Quick start
 
@@ -32,8 +34,9 @@ On first start the app generates three placeholder backgrounds, so it works righ
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Turns on the AI script writer and AI highlight picking |
+| `ANTHROPIC_API_KEY` | Turns on Claude for clip picking, voice-over scripts, B-roll planning, caption highlights and the script writer |
 | `CLAUDE_MODEL` | Defaults to `claude-opus-5-5` |
+| `PEXELS_API_KEY` | Free stock footage for AI B-roll ([get a key](https://www.pexels.com/api/)) |
 | `ELEVENLABS_API_KEY` | Adds ElevenLabs voices. Without it, free Microsoft Edge neural voices are used |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` | faster-whisper size (`base` by default) and `cpu`/`cuda`, used for captions and clipping |
 | `DATA_DIR` | Where uploads, the library and rendered videos are stored (`./data`) |
@@ -59,8 +62,7 @@ curl localhost:8000/api/jobs/<id>     # status, progress, outputs[].url
 | --- | --- |
 | `POST /api/jobs/story` | `title, body, voice, speed, background, music, caption_style, caption_y, part_seconds` |
 | `POST /api/jobs/chat` | `contact_name, messages[{sender: me\|them, text}], hook, voice_me, voice_them, theme` |
-| `POST /api/jobs/edit` | `upload_id\|url, layout: split\|blur\|crop, captions, start, end` |
-| `POST /api/jobs/clip` | `upload_id\|url, count, min_seconds, max_seconds, layout, use_ai` |
+| `POST /api/jobs/studio` | `upload_id\|url, clip, clip_count, clip_min, clip_max, reframe: ai\|blur\|center\|split\|none, aspect, captions, caption_style, broll, broll_count, enhance, voiceover, vo_mode: duck\|replace, vo_script, vo_voice` |
 | `POST /api/uploads` | multipart `file`, returns `{id}` to use as `upload_id` |
 | `POST /api/ai/script` | `kind: story\|chat, idea, seconds` |
 | `GET /api/meta` | voices, caption styles, backgrounds, music |
@@ -76,10 +78,11 @@ app/
   tts.py             TTS providers with word timings (Edge, ElevenLabs, silent)
   captions.py        animated ASS captions (word highlight + pop)
   transcribe.py      faster-whisper word timestamps
-  llm.py             Claude: script writer + highlight picker (structured JSON output)
+  llm.py             Claude calls (structured JSON output): clips, voice-over, B-roll, emphasis, scripts
+  ai/                highlights (clipping), reframe (face tracking), broll, audio (enhance + voice-over mix)
   media.py           background/music library, uploads, URL downloads
   render/images.py   title card + chat screen renderer (Pillow)
-  pipelines/         story, chat, edit (split/blur), clipper, shared ffmpeg compositions
+  pipelines/         studio (all AI features), story, chat, shared ffmpeg compositions
   static/            web UI (no build step)
 tests/               pytest suite (renders real videos with the silent voice)
 ```

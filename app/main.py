@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from . import captions, config, llm, media, tts
 from .jobs import JobManager
-from .pipelines import chat, clipper, edit, story
-from .pipelines.compose import LAYOUTS
+from .ai import audio as ai_audio
+from .pipelines import chat, story, studio
 from .render import images
 
 STATIC = config.ROOT / "app" / "static"
@@ -105,33 +105,46 @@ class SourceReq(BaseModel):
         return self
 
 
-class EditReq(SourceReq):
-    layout: Literal["split", "blur", "crop"] = "split"
-    background: str | None = "random"
-    captions: bool = True
-    caption_style: CaptionStyle = DEFAULT_CAPTION
-    caption_y: float | None = Field(None, ge=0.1, le=0.9)
-    start: float | None = Field(None, ge=0)
+class StudioReq(SourceReq):
+    # AI clipping
+    clip: bool = True
+    clip_count: int = Field(3, ge=1, le=10)
+    clip_min: int = Field(20, ge=5, le=170)
+    clip_max: int = Field(60, ge=10, le=180)
+    start: float | None = Field(None, ge=0)   # trim range when clipping is off
     end: float | None = Field(None, gt=0)
-    max_seconds: float | None = Field(180, gt=0)
-
-
-class ClipReq(SourceReq):
-    count: int = Field(3, ge=1, le=10)
-    min_seconds: int = Field(20, ge=5, le=170)
-    max_seconds: int = Field(60, ge=10, le=180)
-    layout: Literal["split", "blur", "crop"] = "blur"
+    # AI reframe
+    reframe: Literal["ai", "center", "blur", "split", "none"] = "ai"
+    aspect: Literal[tuple(studio.ASPECTS)] = "9:16"  # type: ignore[valid-type]
     background: str | None = "random"
+    # AI captions
     captions: bool = True
     caption_style: CaptionStyle = DEFAULT_CAPTION
     caption_y: float | None = Field(None, ge=0.1, le=0.9)
+    caption_emphasis: bool = True
+    # AI B-roll
+    broll: bool = False
+    broll_count: int = Field(3, ge=1, le=10)
+    # AI audio enhance
+    enhance: bool = True
+    enhance_level: Literal[tuple(ai_audio.ENHANCE_LEVELS)] = "studio"  # type: ignore[valid-type]
+    # AI voice-over
+    voiceover: bool = False
+    vo_mode: Literal["duck", "replace"] = "duck"
+    vo_script: str | None = Field(None, max_length=5000)
+    vo_instructions: str | None = Field(None, max_length=500)
+    vo_voice: str = tts.DEFAULT_VOICE
+    vo_speed: float = Field(1.0, ge=0.5, le=2.0)
+    # general
     use_ai: bool = True
     language: str | None = None
 
     @model_validator(mode="after")
-    def _range(self):
-        if self.max_seconds <= self.min_seconds:
-            raise ValueError("max_seconds must be greater than min_seconds")
+    def _ranges(self):
+        if self.clip and self.clip_max <= self.clip_min:
+            raise ValueError("clip_max must be greater than clip_min")
+        if self.start is not None and self.end is not None and self.end <= self.start:
+            raise ValueError("end must be after start")
         return self
 
 
@@ -158,7 +171,8 @@ def meta():
         "voices": tts.list_voices(),
         "caption_styles": captions.list_styles(),
         "chat_themes": list(images.CHAT_THEMES),
-        "layouts": [{"id": k, "name": v} for k, v in LAYOUTS.items()],
+        "aspects": list(studio.ASPECTS),
+        "pexels_enabled": config.pexels_key() is not None,
         "backgrounds": media.list_backgrounds(),
         "music": media.list_music(),
         "ai_enabled": config.anthropic_enabled(),
@@ -239,16 +253,21 @@ def create_chat(req: ChatReq):
     return jobs.submit("chat", req.model_dump(), chat.run)
 
 
-@app.post("/api/jobs/edit", status_code=202)
-def create_edit(req: EditReq):
-    _check_assets(req.background if req.layout == "split" else None, upload_id=req.upload_id)
-    return jobs.submit("edit", req.model_dump(), edit.run)
+@app.post("/api/jobs/studio", status_code=202)
+def create_studio(req: StudioReq):
+    _check_assets(req.background if req.reframe == "split" else None, upload_id=req.upload_id)
+    return jobs.submit("studio", req.model_dump(), studio.run)
 
 
-@app.post("/api/jobs/clip", status_code=202)
-def create_clip(req: ClipReq):
-    _check_assets(req.background if req.layout == "split" else None, upload_id=req.upload_id)
-    return jobs.submit("clip", req.model_dump(), clipper.run)
+@app.post("/api/broll")
+async def upload_broll(file: UploadFile = File(...)):
+    return await run_in_threadpool(_save_upload, file, config.BROLL_DIR)
+
+
+@app.get("/api/broll")
+def list_broll():
+    return [{"id": p.name, "name": p.stem} for p in sorted(config.BROLL_DIR.iterdir())
+            if p.suffix.lower() in media.VIDEO_EXTS]
 
 
 @app.get("/api/jobs")

@@ -45,7 +45,10 @@ async function loadMeta() {
     : s.name === 'voice_me' ? 'edge:en-US-BrianMultilingualNeural' : 'edge:en-US-AndrewMultilingualNeural'));
   $$('[data-styles]').forEach(s => fillSelect(s, META.caption_styles));
   $$('[data-themes]').forEach(s => fillSelect(s, META.chat_themes.map(t => ({ id: t, name: t[0].toUpperCase() + t.slice(1) }))));
-  $$('[data-layouts]').forEach(s => fillSelect(s, META.layouts, 'blur'));
+  $('#broll-hint').textContent = META.pexels_enabled
+    ? 'Free stock footage from Pexels is matched to what is said, plus your own B-roll library.'
+    : 'Uses clips from your Library > B-roll (named after what they show). Add PEXELS_API_KEY for automatic stock footage.';
+  renderBroll();
   renderMusic();
   renderBackgrounds();
   $('#ai-status').innerHTML = META.ai_enabled ? '✨ Claude AI connected' : 'AI writing off: set ANTHROPIC_API_KEY';
@@ -199,29 +202,45 @@ $('#chat-ai').addEventListener('click', e => withBusy(e.target, async () => {
   toast('Conversation written');
 }));
 
-/* ---------- split / blur / clip ---------- */
-['split', 'blur'].forEach(name => {
-  $(`#form-${name}`).addEventListener('submit', e => {
-    e.preventDefault();
-    const btn = $('button[type=submit]', e.target);
-    withBusy(btn, async () => {
-      const src = await resolveSource(e.target);
-      await postJSON('/api/jobs/edit', { ...formData(e.target), ...src, layout: name, background: bgChoice[name] });
-      toast('Rendering started');
-      refreshJobs();
-    });
+/* ---------- AI studio ---------- */
+const studioForm = $('#form-studio');
+function syncFeatures() {
+  $$('.feature', studioForm).forEach(f => {
+    const sw = $('.feature-head .switch', f);
+    const on = sw ? sw.checked : true;
+    f.classList.toggle('on', on);
+    const body = $('.feature-body', f), off = $('.feature-off', f);
+    if (body) body.hidden = !on;
+    if (off) off.hidden = on;
   });
-});
-$('#form-clip').addEventListener('submit', e => {
+  $('.feature-split', studioForm).hidden = studioForm.elements.reframe.value !== 'split';
+}
+studioForm.addEventListener('change', syncFeatures);
+syncFeatures();
+
+studioForm.addEventListener('submit', e => {
   e.preventDefault();
-  const btn = $('button[type=submit]', e.target);
+  const btn = $('button[type=submit]', studioForm);
   withBusy(btn, async () => {
-    const src = await resolveSource(e.target);
-    await postJSON('/api/jobs/clip', { ...formData(e.target), ...src, background: bgChoice.clip });
-    toast('Clipping started. Long videos take a few minutes.');
+    const data = formData(studioForm);
+    if (data.voiceover && !data.vo_script && !META.ai_enabled)
+      throw new Error('AI voice-over needs ANTHROPIC_API_KEY to write the script, or write one yourself');
+    if (!data.clip) { delete data.clip_count; delete data.clip_min; delete data.clip_max; }
+    const src = await resolveSource(studioForm);
+    await postJSON('/api/jobs/studio', { ...data, ...src, background: bgChoice.studio });
+    toast('Working on it. Longer videos take a few minutes.');
     refreshJobs();
   });
 });
+
+async function renderBroll() {
+  try {
+    const items = await api('/api/broll');
+    $('#library-broll').innerHTML = items.length
+      ? items.map(b => `<li>🎞️ ${esc(b.name)}</li>`).join('')
+      : '<li class="empty">No B-roll clips yet.</li>';
+  } catch { /* ignore */ }
+}
 
 /* ---------- library ---------- */
 async function uploadTo(path, input) {
@@ -235,6 +254,7 @@ async function uploadTo(path, input) {
   toast('Added to library');
 }
 $('#bg-upload').addEventListener('click', e => withBusy(e.target, () => uploadTo('/api/backgrounds', $('#bg-file'))));
+$('#broll-upload').addEventListener('click', e => withBusy(e.target, () => uploadTo('/api/broll', $('#broll-file'))));
 $('#music-upload').addEventListener('click', e => withBusy(e.target, () => uploadTo('/api/music', $('#music-file'))));
 $('#bg-download').addEventListener('click', e => withBusy(e.target, async () => {
   const url = $('#bg-url').value.trim();
@@ -246,10 +266,14 @@ $('#bg-download').addEventListener('click', e => withBusy(e.target, async () => 
 }));
 
 /* ---------- jobs ---------- */
-const KIND = { story: 'Story video', chat: 'Text story', edit: 'Reframe', clip: 'AI clips' };
+const KIND = { studio: 'AI Studio', story: 'Story video', chat: 'Text story' };
 function jobTitle(j) {
   const p = j.params || {};
-  return p.title || p.contact_name || (p.layout ? `${p.layout} reframe` : '') || KIND[j.kind];
+  if (j.kind === 'studio') {
+    const on = [p.clip && 'clips', p.captions && 'captions', p.broll && 'B-roll', p.enhance && 'audio', p.voiceover && 'voice-over'].filter(Boolean);
+    return `${p.reframe === 'ai' ? 'AI reframe' : p.reframe}${on.length ? ' + ' + on.join(', ') : ''}`;
+  }
+  return p.title || p.contact_name || KIND[j.kind];
 }
 function renderJobs(list) {
   const box = $('#jobs');
@@ -292,7 +316,11 @@ function openPlayer(o) {
   $('#player-meta').innerHTML = `<strong>${esc(o.title || 'Video')}</strong>` +
     (o.hook ? `<span class="hint">${esc(o.hook)}</span>` : '') +
     (o.start !== undefined ? `<span class="hint">From ${o.start}s to ${o.end}s${o.picker ? ` · picked by ${esc(o.picker)}` : ''}</span>` : '') +
-    `<a href="${esc(o.url)}" download>⬇ Download MP4</a>`;
+    (o.features && o.features.length ? `<div class="chips">${o.features.map(f => `<span>${esc(f)}</span>`).join('')}</div>` : '') +
+    (o.broll && o.broll.length ? `<span class="hint">B-roll: ${o.broll.map(b => `${esc(b.query)} @ ${b.start}s`).join(', ')}</span>` : '') +
+    (o.script ? `<details><summary>Voice-over script</summary><p class="hint">${esc(o.script)}</p></details>` : '') +
+    (o.notes || []).map(n => `<span class="hint">ℹ️ ${esc(n)}</span>`).join('') +
+    `<div class="row"><a href="${esc(o.url)}" download>⬇ Download MP4</a>${o.srt ? `<a href="${esc(o.srt)}" download>⬇ Captions (.srt)</a>` : ''}</div>`;
   $('#player').hidden = false;
   $('#player-video').play().catch(() => {});
 }

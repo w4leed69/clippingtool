@@ -1,11 +1,9 @@
-"""AI clipper: turn a long video into several captioned vertical shorts."""
+"""AI clipping: find the moments of a long video that work best as standalone shorts."""
 from __future__ import annotations
 
 import re
 
-from .. import captions, config, ffmpeg, llm, media, transcribe
-from ..jobs import JobContext
-from .compose import DEFAULT_CAPTION_Y, render_vertical
+from .. import config, llm, transcribe
 
 HYPE_WORDS = {
     "insane", "crazy", "never", "secret", "biggest", "worst", "best", "actually", "literally", "wait",
@@ -76,45 +74,17 @@ def sanitize(clips: list[dict], total: float, min_len: float, max_len: float) ->
     return out
 
 
-def run(ctx: JobContext, p: dict) -> None:
-    ctx.update(0.02, "Fetching source video")
-    src = media.resolve_source(p.get("upload_id"), p.get("url"), ctx.work)
-    total = ffmpeg.duration(src)
-    min_len, max_len = p.get("min_seconds", 20), p.get("max_seconds", 60)
-    count = p.get("count", 3)
-
-    ctx.update(0.08, "Transcribing (this takes a while for long videos)")
-    audio = ctx.work / "audio.wav"
-    ffmpeg.run(["-i", src, "-vn", "-ac", "1", "-ar", "16000", audio])
-    segments = transcribe.transcribe(audio, language=p.get("language"))
-    if not segments:
-        raise ValueError("No speech found in this video")
-
-    ctx.update(0.4, "Finding the best moments")
-    clips = None
-    picker = "heuristic"
-    if p.get("use_ai", True) and config.anthropic_enabled():
+def pick(segments: list[transcribe.Segment], total: float, count: int, min_len: float, max_len: float,
+         use_ai: bool = True) -> tuple[list[dict], str, str | None]:
+    """Return (clips, picker name, note). Uses Claude when available, else the local scorer."""
+    note = None
+    if use_ai and config.anthropic_enabled():
         try:
-            clips = llm.pick_highlights(format_transcript(segments), count, min_len, max_len)
-            picker = "claude"
+            clips = sanitize(llm.pick_highlights(format_transcript(segments), count, min_len, max_len),
+                             total, min_len, max_len)[:count]
+            if clips:
+                return clips, "claude", None
         except Exception as e:  # fall back to the local scorer on any AI failure
-            ctx.update(message=f"AI picker unavailable ({e}); using built-in scorer")
-    if not clips:
-        clips = heuristic_highlights(segments, count, min_len, max_len)
-    clips = sanitize(clips, total, min_len, max_len)[:count]
-    if not clips:
-        raise ValueError("Could not find any clip in the requested length range; try a wider range")
-
-    layout = p.get("layout", "blur")
-    bg = media.background_path(p.get("background")) if layout == "split" else None
-    for i, c in enumerate(clips):
-        ctx.update(0.45 + 0.55 * i / len(clips), f"Rendering clip {i + 1}/{len(clips)}")
-        ass = None
-        if p.get("captions", True):
-            words = transcribe.words_between(segments, c["start"], c["end"])
-            ass = captions.build_ass(words, ctx.work / f"subs{i}.ass", p.get("caption_style", captions.DEFAULT_STYLE),
-                                     y=p.get("caption_y") or DEFAULT_CAPTION_Y[layout])
-        out = ctx.output_path()
-        render_vertical(work=ctx.work, out=out, src=src, start=c["start"], end=c["end"], layout=layout, ass=ass, bg=bg)
-        ctx.add_output(out, title=c.get("title", f"Clip {i + 1}"), hook=c.get("hook", ""),
-                       score=c.get("score"), start=c["start"], end=c["end"], picker=picker)
+            note = f"AI picker unavailable ({e}); used the built-in scorer"
+    clips = sanitize(heuristic_highlights(segments, count, min_len, max_len), total, min_len, max_len)[:count]
+    return clips, "heuristic", note

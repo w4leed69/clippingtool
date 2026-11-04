@@ -10,8 +10,11 @@ class LLMUnavailable(RuntimeError):
     pass
 
 
-def structured(system: str, prompt: str, schema: dict, effort: str = "medium") -> dict:
-    """One Claude call that must answer with JSON matching ``schema``."""
+def structured(system: str, prompt: str | list, schema: dict, effort: str = "medium") -> dict:
+    """One Claude call that must answer with JSON matching ``schema``.
+
+    ``prompt`` is a string or a list of content blocks (text and images).
+    """
     if not config.anthropic_enabled():
         raise LLMUnavailable("Set ANTHROPIC_API_KEY to use AI features")
     import anthropic
@@ -137,3 +140,85 @@ def pick_highlights(transcript: str, count: int, min_len: int, max_len: int) -> 
         f"exactly as given (seconds).\n\nTranscript:\n{transcript}"
     )
     return structured(system, prompt, HIGHLIGHT_SCHEMA)["clips"]
+
+
+BROLL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "moments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "start": {"type": "number"},
+                    "end": {"type": "number"},
+                    "query": {"type": "string", "description": "2-4 word stock-footage search, concrete and visual"},
+                },
+                "required": ["start", "end", "query"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["moments"],
+    "additionalProperties": False,
+}
+
+
+def plan_broll(transcript: str, count: int, duration: float) -> list[dict]:
+    system = (
+        "You are a video editor adding B-roll cutaways to a talking video. Pick moments where the speaker "
+        "mentions something concrete and visual (a place, object, action, emotion) that stock footage can show. "
+        "Each cutaway lasts 2 to 4 seconds, starts when the word is spoken, never in the first 2 seconds, "
+        "and cutaways are at least 5 seconds apart."
+    )
+    prompt = (f"The clip is {duration:.1f} seconds long. Choose up to {count} B-roll moments. Each word below "
+              f"is prefixed with its start time in seconds.\n\n{transcript}")
+    moments = structured(system, prompt, BROLL_SCHEMA)["moments"]
+    out = []
+    for m in moments:
+        s, e = max(0.0, float(m["start"])), min(duration, float(m["end"]))
+        if 1.0 <= e - s <= 6 and m["query"].strip():
+            out.append({"start": round(s, 2), "end": round(e, 2), "query": m["query"].strip()})
+    return out[:count]
+
+
+VOICEOVER_SCHEMA = {
+    "type": "object",
+    "properties": {"script": {"type": "string", "description": "Narration only, to be read aloud"}},
+    "required": ["script"],
+    "additionalProperties": False,
+}
+
+
+def write_voiceover(frames: list[str], duration: float, transcript: str = "", instructions: str = "") -> str:
+    """Write narration for a clip from sampled frames (base64 JPEGs) plus any existing speech."""
+    words = max(8, int(duration * 2.4))
+    content: list = []
+    for i, b64 in enumerate(frames):
+        content.append({"type": "text", "text": f"Frame {i + 1} of {len(frames)}:"})
+        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}})
+    ask = (f"These frames are evenly spaced through a {duration:.0f}-second video. Write a voice-over for it of "
+           f"about {words} words so it fits the length. Describe and react to what happens, in order, with a hook "
+           "in the first sentence.")
+    if transcript:
+        ask += f"\n\nWhat people say in the video (for context, do not just repeat it):\n{transcript}"
+    if instructions:
+        ask += f"\n\nCreator's instructions: {instructions}"
+    content.append({"type": "text", "text": ask})
+    return structured(WRITER_SYSTEM, content, VOICEOVER_SCHEMA)["script"].strip()
+
+
+EMPHASIS_SCHEMA = {
+    "type": "object",
+    "properties": {"words": {"type": "array", "items": {"type": "string"}}},
+    "required": ["words"],
+    "additionalProperties": False,
+}
+
+
+def pick_emphasis(text: str) -> list[str]:
+    """Words worth highlighting in captions (key nouns, numbers, emotional words)."""
+    system = ("You style captions for short-form video. Pick the words that carry the meaning or emotion: key "
+              "nouns, numbers, names, strong verbs and punchlines. About one word in eight, never filler words.")
+    prompt = f"Return the words to emphasize, exactly as they appear in this transcript:\n\n{text}"
+    return structured(system, prompt, EMPHASIS_SCHEMA, effort="low")["words"]

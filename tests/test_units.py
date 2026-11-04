@@ -1,5 +1,6 @@
 from app import captions, tts
-from app.pipelines import clipper, story
+from app.ai import highlights as clipper
+from app.pipelines import story
 from app.transcribe import Segment
 from app.tts import Word
 
@@ -93,3 +94,77 @@ def test_sanitize_drops_overlaps_and_clamps():
     out = clipper.sanitize(clips, total=100, min_len=10, max_len=30)
     assert [c["title"] for c in out] == ["a", "c"]
     assert out[0]["start"] == 0 and out[1]["end"] == 80
+
+
+# ---------------------------------------------------------------- AI reframe
+
+from app.ai import broll, reframe
+
+
+def test_track_prefers_current_subject_and_holds_through_gaps():
+    a, b = reframe.Face(0.3, 0.4, 0.20), reframe.Face(0.8, 0.4, 0.22)
+    samples = [[a, b]] * 3 + [[]] * 2 + [[reframe.Face(0.32, 0.4, 0.2), b]]
+    pos = reframe.track(samples)
+    assert pos[0] == 0.8  # biggest face first
+    assert pos[3] == pos[4] == 0.8  # held through missed detections
+    long_gap = reframe.track([[a]] + [[]] * 30)
+    assert long_gap[-1] is None
+
+
+def test_camera_path_is_smooth_and_stays_in_bounds():
+    positions = [0.2] * 10 + [0.8] * 10  # subject jumps from left to right
+    path = reframe.camera_path(positions, frames=120, fps=30, crop_frac=0.3)
+    assert len(path) == 120
+    assert all(0.15 <= x <= 0.85 for x in path)
+    assert max(abs(b - a) for a, b in zip(path, path[1:])) <= 0.3 * 1.2 / 30 + 1e-9
+    assert path[-1] > path[0]
+    assert reframe.camera_path([None, None], 10, 30, 0.3) == [0.5] * 10
+
+
+def test_reframe_follows_detected_face(tmp_path, monkeypatch):
+    import subprocess
+    from app import ffmpeg
+    src = tmp_path / "wide.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30",
+                    "-t", "2", "-pix_fmt", "yuv420p", str(src)], check=True)
+    monkeypatch.setattr(reframe.FaceDetector, "detect", lambda self, f: [reframe.Face(0.8, 0.5, 0.2)])
+    out = tmp_path / "v.mp4"
+    stats = reframe.reframe(src, out, 270, 480)
+    assert stats["face_coverage"] == 1.0
+    info = ffmpeg.probe(out)["streams"][0]
+    assert (info["width"], info["height"]) == (270, 480)
+
+
+# ---------------------------------------------------------------- B-roll, captions extras
+
+def test_library_moments_match_spoken_words(monkeypatch, tmp_path):
+    from pathlib import Path
+    monkeypatch.setattr(broll, "_local_library", lambda: [Path("city-night.mp4"), Path("money.mp4")])
+    text = "so I moved to the city and then one day I finally made real money and the money kept coming"
+    words = [W(t, i * 0.5, i * 0.5 + 0.4) for i, t in enumerate(text.split())]
+    moments = broll.library_moments(words, 5)
+    assert [m["query"] for m in moments] == ["city", "money"]  # first "money" is <5 s after "city", so the next one is used
+    assert moments[1]["start"] == 8.5
+    assert broll.library_moments(words, 1) == moments[:1]
+
+
+def test_emphasis_and_srt(tmp_path):
+    words = [W("We", 0, .3), W("made", .3, .6), W("$500!", .6, 1.0)]
+    ass = captions.build_ass(words, tmp_path / "s.ass", "clean", emphasis={"500"}).read_text()
+    assert "fscx112" in ass
+    srt = captions.build_srt(words, tmp_path / "s.srt").read_text()
+    assert srt.startswith("1\n00:00:00,000 --> 00:00:01,000\nWe made $500!")
+
+
+def test_audio_enhance_normalizes_loudness(tmp_path):
+    import re
+    import subprocess
+    from app.ai import audio
+    src = tmp_path / "quiet.wav"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=4",
+                    "-af", "volume=0.05", str(src)], check=True)
+    out = audio.enhance(src, tmp_path / "loud.wav")
+    meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(out), "-af", "ebur128", "-f", "null", "-"],
+                          capture_output=True, text=True).stderr
+    lufs = float(re.findall(r"I:\s+(-?[\d.]+) LUFS", meas)[-1])
+    assert -16 < lufs < -12

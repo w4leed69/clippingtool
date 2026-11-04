@@ -11,19 +11,107 @@
   <aside class="sidebar">
     <div class="brand"><span class="logo">▶</span> ClipForge</div>
     <nav id="nav">
-      <button data-tab="story" class="active"><span>📖</span> Story video</button>
+      <button data-tab="studio" class="active"><span>✨</span> AI Studio</button>
+      <div class="nav-label">Templates</div>
+      <button data-tab="story"><span>📖</span> Story video</button>
       <button data-tab="chat"><span>💬</span> Text story</button>
-      <button data-tab="split"><span>🎮</span> Split screen</button>
-      <button data-tab="blur"><span>🌫️</span> Blur reframe</button>
-      <button data-tab="clip"><span>✂️</span> AI clipper</button>
+      <div class="nav-label">Assets</div>
       <button data-tab="library"><span>🗂️</span> Library</button>
     </nav>
     <div class="sidebar-foot" id="ai-status"></div>
   </aside>
 
   <main class="main">
+    <!-- STUDIO -->
+    <section class="tab active" id="tab-studio">
+      <header><h1>AI Studio</h1><p>Upload one video. Turn on the AI tools you want. Get ready-to-post shorts.</p></header>
+      <form id="form-studio">
+        <div class="card">
+          <label>Your video</label>
+          <div data-source></div>
+        </div>
+
+        <div class="features">
+          <div class="feature" data-feature="clip">
+            <div class="feature-head"><div><b>✂️ AI clipping</b><span>Finds the most viral moments in long videos</span></div><input type="checkbox" class="switch" name="clip" checked></div>
+            <div class="feature-body grid">
+              <label>Number of clips <input name="clip_count" type="number" min="1" max="10" value="3"></label>
+              <label>Min length (sec) <input name="clip_min" type="number" min="5" max="170" value="20"></label>
+              <label>Max length (sec) <input name="clip_max" type="number" min="10" max="180" value="60"></label>
+            </div>
+            <div class="feature-off grid">
+              <label>Start (sec) <input name="start" type="number" min="0" step="0.1" placeholder="0"></label>
+              <label>End (sec) <input name="end" type="number" min="0" step="0.1" placeholder="end"></label>
+              <p class="hint">Clipping off: the whole video (or this range) is processed as one.</p>
+            </div>
+          </div>
+
+          <div class="feature" data-feature="captions">
+            <div class="feature-head"><div><b>💬 AI captions</b><span>Word-by-word animated captions with AI keyword highlights</span></div><input type="checkbox" class="switch" name="captions" checked></div>
+            <div class="feature-body grid">
+              <label>Style <select name="caption_style" data-styles></select></label>
+              <label>Height <input name="caption_y" type="range" min="0.15" max="0.88" step="0.01" value="0.72"></label>
+              <label class="check"><input type="checkbox" name="caption_emphasis" checked> Highlight key words</label>
+            </div>
+          </div>
+
+          <div class="feature" data-feature="reframe">
+            <div class="feature-head"><div><b>🎯 AI reframe</b><span>Tracks the speaker's face and keeps them in frame</span></div><span class="always">Always on</span></div>
+            <div class="feature-body grid">
+              <label>Mode <select name="reframe">
+                <option value="ai" selected>AI face tracking</option>
+                <option value="blur">Blurred fill (keep full frame)</option>
+                <option value="center">Center crop</option>
+                <option value="split">Split screen with gameplay</option>
+                <option value="none">Keep original framing</option>
+              </select></label>
+              <label>Format <select name="aspect">
+                <option value="9:16" selected>9:16 TikTok / Reels / Shorts</option>
+                <option value="1:1">1:1 Square</option>
+                <option value="16:9">16:9 YouTube</option>
+              </select></label>
+            </div>
+            <div class="feature-split" hidden>
+              <div class="picker-label">Gameplay</div>
+              <div class="bg-picker" data-bg-picker="studio"></div>
+            </div>
+          </div>
+
+          <div class="feature" data-feature="broll">
+            <div class="feature-head"><div><b>🎞️ AI B-roll</b><span>Adds matching cutaway footage when you mention something visual</span></div><input type="checkbox" class="switch" name="broll"></div>
+            <div class="feature-body grid">
+              <label>Cutaways per clip <input name="broll_count" type="number" min="1" max="10" value="3"></label>
+              <p class="hint" id="broll-hint"></p>
+            </div>
+          </div>
+
+          <div class="feature" data-feature="enhance">
+            <div class="feature-head"><div><b>🎙️ AI audio enhance</b><span>Removes noise and hum, evens out the voice, platform-ready loudness</span></div><input type="checkbox" class="switch" name="enhance" checked></div>
+            <div class="feature-body grid">
+              <label>Strength <select name="enhance_level"><option value="studio" selected>Studio (strong)</option><option value="light">Light</option></select></label>
+            </div>
+          </div>
+
+          <div class="feature" data-feature="voiceover">
+            <div class="feature-head"><div><b>🗣️ AI voice-over</b><span>AI watches your clip, writes narration and voices it</span></div><input type="checkbox" class="switch" name="voiceover"></div>
+            <div class="feature-body">
+              <div class="grid">
+                <label>Voice <select name="vo_voice" data-voices></select></label>
+                <label>Speed <input name="vo_speed" type="number" step="0.05" min="0.5" max="2" value="1.0"></label>
+                <label>Original audio <select name="vo_mode"><option value="duck" selected>Keep it quieter under the voice</option><option value="replace">Replace it</option></select></label>
+              </div>
+              <label>Direction for the AI (optional) <input name="vo_instructions" placeholder="e.g. Hype sports commentator, funny tone"></label>
+              <label>Or write the script yourself <textarea name="vo_script" rows="3" placeholder="Leave empty and AI writes a script for each clip"></textarea></label>
+            </div>
+          </div>
+        </div>
+
+        <button class="primary big" type="submit">✨ Create shorts</button>
+      </form>
+    </section>
+
     <!-- STORY -->
-    <section class="tab active" id="tab-story">
+    <section class="tab" id="tab-story">
       <header><h1>Story video</h1><p>Narrated story with a title card and animated captions over gameplay.</p></header>
       <div class="card ai-card">
         <label>Generate with AI</label>
@@ -91,63 +179,9 @@
       </form>
     </section>
 
-    <!-- SPLIT -->
-    <section class="tab" id="tab-split">
-      <header><h1>Split screen</h1><p>Your clip on top, satisfying gameplay below, with auto captions.</p></header>
-      <form class="card" id="form-split" data-layout="split">
-        <div data-source></div>
-        <div class="grid">
-          <label>Start (sec) <input name="start" type="number" min="0" step="0.1" placeholder="0"></label>
-          <label>End (sec) <input name="end" type="number" min="0" step="0.1" placeholder="end of video"></label>
-          <label>Max length (sec) <input name="max_seconds" type="number" min="5" value="180"></label>
-          <label>Caption style <select name="caption_style" data-styles></select></label>
-          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
-        </div>
-        <div class="picker-label">Gameplay</div>
-        <div class="bg-picker" data-bg-picker="split"></div>
-        <button class="primary" type="submit">Generate video</button>
-      </form>
-    </section>
-
-    <!-- BLUR -->
-    <section class="tab" id="tab-blur">
-      <header><h1>Blur reframe</h1><p>Turn a horizontal video vertical with a blurred fill and captions.</p></header>
-      <form class="card" id="form-blur" data-layout="blur">
-        <div data-source></div>
-        <div class="grid">
-          <label>Start (sec) <input name="start" type="number" min="0" step="0.1" placeholder="0"></label>
-          <label>End (sec) <input name="end" type="number" min="0" step="0.1" placeholder="end of video"></label>
-          <label>Max length (sec) <input name="max_seconds" type="number" min="5" value="180"></label>
-          <label>Caption style <select name="caption_style" data-styles></select></label>
-          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
-        </div>
-        <button class="primary" type="submit">Generate video</button>
-      </form>
-    </section>
-
-    <!-- CLIP -->
-    <section class="tab" id="tab-clip">
-      <header><h1>AI clipper</h1><p>Drop a podcast, stream or long video. Get the best moments as captioned shorts.</p></header>
-      <form class="card" id="form-clip">
-        <div data-source></div>
-        <div class="grid">
-          <label>Number of clips <input name="count" type="number" min="1" max="10" value="3"></label>
-          <label>Min length (sec) <input name="min_seconds" type="number" min="5" max="170" value="20"></label>
-          <label>Max length (sec) <input name="max_seconds" type="number" min="10" max="180" value="60"></label>
-          <label>Layout <select name="layout" data-layouts></select></label>
-          <label>Caption style <select name="caption_style" data-styles></select></label>
-          <label class="check"><input type="checkbox" name="captions" checked> Auto captions</label>
-          <label class="check"><input type="checkbox" name="use_ai" checked> Use Claude to pick moments</label>
-        </div>
-        <div class="picker-label">Gameplay (split layout only)</div>
-        <div class="bg-picker" data-bg-picker="clip"></div>
-        <button class="primary" type="submit">Find clips</button>
-      </form>
-    </section>
-
     <!-- LIBRARY -->
     <section class="tab" id="tab-library">
-      <header><h1>Library</h1><p>Background gameplay and music used by your videos. Only add footage you have the rights to use.</p></header>
+      <header><h1>Library</h1><p>Gameplay, B-roll and music used by your videos. Only add footage you have the rights to use.</p></header>
       <div class="card">
         <label>Add background video</label>
         <div class="row">
@@ -159,6 +193,15 @@
           <button class="ghost" id="bg-download">Download</button>
         </div>
         <div class="bg-picker" id="library-bgs"></div>
+      </div>
+      <div class="card">
+        <label>B-roll clips</label>
+        <p class="hint">Name files after what they show, e.g. <code>money-cash.mp4</code> or <code>city-night.mp4</code>. When those words are spoken, AI B-roll cuts to them. With a PEXELS_API_KEY, free stock footage is found automatically too.</p>
+        <div class="row">
+          <input type="file" id="broll-file" accept="video/*">
+          <button class="ghost" id="broll-upload">Upload</button>
+        </div>
+        <ul id="library-broll" class="plain"></ul>
       </div>
       <div class="card">
         <label>Add music</label>

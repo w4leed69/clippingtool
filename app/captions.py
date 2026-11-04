@@ -1,6 +1,7 @@
 """Animated word-by-word captions written as an ASS subtitle file (burned in by ffmpeg/libass)."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,10 +80,20 @@ def group_words(words: list[Word], max_words: int = 3, max_chars: int = 18, max_
     return groups
 
 
+def norm_word(text: str) -> str:
+    return re.sub(r"[^\w']", "", text.lower())
+
+
 def build_ass(words: list[Word], out: Path, style: str = DEFAULT_STYLE, y: float = 0.5,
-              width: int = config.WIDTH, height: int = config.HEIGHT) -> Path:
-    """Write an .ass file showing ``words`` in small animated groups, centered at ``y`` (0 top .. 1 bottom)."""
+              width: int = config.WIDTH, height: int = config.HEIGHT,
+              emphasis: set[str] | None = None) -> Path:
+    """Write an .ass file showing ``words`` in small animated groups, centered at ``y`` (0 top .. 1 bottom).
+
+    Words in ``emphasis`` (normalized with ``norm_word``) are always drawn bigger and in the accent color.
+    """
     st = STYLES.get(style, STYLES[DEFAULT_STYLE])
+    emphasis = emphasis or set()
+    accent = st.highlight_color if st.highlight else "FFE81F"
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -121,8 +132,12 @@ def build_ass(words: list[Word], out: Path, style: str = DEFAULT_STYLE, y: float
                 end = start + 0.05
             parts = []
             for wi, t in enumerate(texts):
+                emph = norm_word(group[wi].text) in emphasis
                 if si is not None and wi == si:
                     parts.append(f"{{\\c{_ass_color(st.highlight_color)}}}{t}{{\\c{_ass_color(st.text_color)}}}")
+                elif emph:
+                    parts.append(f"{{\\c{_ass_color(accent)}\\fscx112\\fscy112}}{t}"
+                                 f"{{\\c{_ass_color(st.text_color)}\\fscx100\\fscy100}}")
                 else:
                     parts.append(t)
             anim = ""
@@ -131,4 +146,20 @@ def build_ass(words: list[Word], out: Path, style: str = DEFAULT_STYLE, y: float
             text = f"{{\\pos({px},{py}){anim}}}" + " ".join(parts)
             lines.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{text}")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out
+
+
+def build_srt(words: list[Word], out: Path, max_words: int = 7) -> Path:
+    """Plain subtitle file for uploading to YouTube/TikTok or editing elsewhere."""
+    def ts(t: float) -> str:
+        ms = int(round(max(t, 0) * 1000))
+        h, ms = divmod(ms, 3600000)
+        m, ms = divmod(ms, 60000)
+        s, ms = divmod(ms, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    blocks = []
+    for i, g in enumerate(group_words(words, max_words=max_words, max_chars=42, max_gap=0.8), start=1):
+        blocks.append(f"{i}\n{ts(g[0].start)} --> {ts(g[-1].end)}\n{' '.join(w.text for w in g)}\n")
+    out.write_text("\n".join(blocks), encoding="utf-8")
     return out

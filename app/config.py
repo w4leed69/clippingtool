@@ -27,11 +27,12 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data")).resolve()
 UPLOADS_DIR = DATA_DIR / "uploads"
 BACKGROUNDS_DIR = DATA_DIR / "backgrounds"
 MUSIC_DIR = DATA_DIR / "music"
+BROLL_DIR = DATA_DIR / "broll"
 OUTPUTS_DIR = DATA_DIR / "outputs"
 WORK_DIR = DATA_DIR / "work"
 JOBS_DIR = DATA_DIR / "jobs"
 
-for _d in (UPLOADS_DIR, BACKGROUNDS_DIR, MUSIC_DIR, OUTPUTS_DIR, WORK_DIR, JOBS_DIR):
+for _d in (UPLOADS_DIR, BACKGROUNDS_DIR, MUSIC_DIR, BROLL_DIR, OUTPUTS_DIR, WORK_DIR, JOBS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 WIDTH = 1080
@@ -68,3 +69,7 @@ def anthropic_enabled() -> bool:
 
 def elevenlabs_key() -> str | None:
     return os.environ.get("ELEVENLABS_API_KEY") or None
+
+
+def pexels_key() -> str | None:
+    return os.environ.get("PEXELS_API_KEY") or None
