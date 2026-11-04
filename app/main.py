@@ -1,7 +1,9 @@
 """HTTP API + static web UI."""
 from __future__ import annotations
 
+import re
 import shutil
+import subprocess
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -31,6 +33,15 @@ async def lifespan(_app: FastAPI):
             "  Install it, then start the app again:\n"
             "    Mac:     brew install ffmpeg\n"
             "    Windows: winget install Gyan.FFmpeg   (then open a new terminal)\n"
+            "    Linux:   sudo apt install ffmpeg\n")
+    filters = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True).stdout
+    if not re.search(r"^\s*\S+\s+ass\s", filters, re.M):
+        raise SystemExit(
+            "\n\n  Your ffmpeg was built without libass, which ClipForge needs to burn in captions.\n"
+            "  Install a full build, then start the app again:\n"
+            "    Mac:     brew uninstall ffmpeg && brew install ffmpeg-full\n"
+            "             (if `ffmpeg` is then not found, add $(brew --prefix ffmpeg-full)/bin to your PATH)\n"
+            "    Windows: winget install Gyan.FFmpeg\n"
             "    Linux:   sudo apt install ffmpeg\n")
     await run_in_threadpool(media.ensure_placeholders)
     jobs = JobManager()
